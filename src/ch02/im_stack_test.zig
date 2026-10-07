@@ -174,3 +174,64 @@ test "ImStack: works with non-integer items" {
     try testing.expectEqualStrings("giraffe", try words.peek());
     try testing.expectEqualStrings("tiger", try (try words.pop()).peek());
 }
+
+/// Pushes `items` in order, so the last one ends up on top.
+fn pushAll(allocator: std.mem.Allocator, items: []const i32) !Stack {
+    var s = Stack.empty;
+    for (items) |item| s = try s.push(allocator, item);
+    return s;
+}
+
+test "ImStack.reverse: reversing the empty stack gives the empty stack without allocating" {
+    var failing: testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = 0 });
+    const r = try Stack.empty.reverse(failing.allocator());
+    try testing.expect(r.isEmpty());
+}
+
+test "ImStack.reverse: reverses the order and leaves the original unchanged" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try pushAll(a, &.{ 1, 2, 3 });
+    const r = try s.reverse(a);
+    try expectItems(i32, r, &.{ 1, 2, 3 });
+    try expectItems(i32, s, &.{ 3, 2, 1 });
+    try expectItems(i32, try r.reverse(a), &.{ 3, 2, 1 });
+
+    try expectItems(i32, try (try Stack.empty.push(a, 7)).reverse(a), &.{7});
+}
+
+test "ImStack.reverse: reports OutOfMemory at any allocation and leaves the stack usable" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const s = try pushAll(arena.allocator(), &.{ 1, 2, 3 });
+    var fail_index: usize = 0;
+    while (fail_index < 100) : (fail_index += 1) {
+        var failing: testing.FailingAllocator = .init(arena.allocator(), .{ .fail_index = fail_index });
+        const result = s.reverse(failing.allocator());
+        try expectItems(i32, s, &.{ 3, 2, 1 });
+        if (result) |r| {
+            try expectItems(i32, r, &.{ 1, 2, 3 });
+            break;
+        } else |err| try testing.expectEqual(error.OutOfMemory, err);
+    } else return error.TestUnexpectedResult;
+    try testing.expect(fail_index > 0);
+}
+
+test "ImStack.reverse: deep stacks reverse without recursion" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const n = 200_000;
+    var s = Stack.empty;
+    for (0..n) |i| s = try s.push(a, @intCast(i));
+
+    const r = try s.reverse(a);
+    var expected: i32 = 0;
+    var it = r.iterator();
+    while (it.next()) |item| : (expected += 1) try testing.expectEqual(expected, item);
+    try testing.expectEqual(n, expected);
+}

@@ -53,6 +53,14 @@ pub fn ImStack(comptime T: type) type {
             return self.head == null;
         }
 
+        /// 2.4, listing 2.7: the same items in the opposite order.
+        /// O(n) time and memory, without recursion; `self` is unchanged.
+        pub fn reverse(self: Self, allocator: Allocator) Allocator.Error!Self {
+            _ = self;
+            _ = allocator;
+            @panic("TODO: ImStack.reverse");
+        }
+
         /// Yields items from top to bottom without recursion or allocation.
         pub fn iterator(self: Self) Iterator {
             return .{ .current = self };

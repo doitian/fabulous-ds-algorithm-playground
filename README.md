@@ -49,7 +49,9 @@ src/
 
 | Chapter | Exercise | Skeleton | Status |
 | --- | --- | --- | --- |
-| 2.2 | Immutable stack | `src/ch02/im_stack.zig` | ⬜ |
+| 2.2 | Immutable stack | `src/ch02/im_stack.zig` | ✅ |
+| 2.4 | Stack `reverse` (listing 2.7) | `src/ch02/im_stack.zig` | ⬜ |
+| 2.4 | Immutable queue | `src/ch02/im_queue.zig` | ⬜ |
 
 ## License
 
