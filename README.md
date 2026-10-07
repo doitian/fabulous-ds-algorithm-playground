@@ -50,3 +50,7 @@ src/
 | Chapter | Exercise | Skeleton | Status |
 | --- | --- | --- | --- |
 | 2.2 | Immutable stack | `src/ch02/im_stack.zig` | ⬜ |
+
+## License
+
+[Mozilla Public License 2.0](LICENSE)
