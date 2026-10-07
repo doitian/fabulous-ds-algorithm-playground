@@ -3,5 +3,9 @@ zig = "0.17.0"
 
 [tasks.langref]
 description = "Open the bundled Zig language reference for the pinned version"
-shell = "pwsh -NoProfile -Command"
-run = "Invoke-Item (Join-Path (mise where zig) doc langref.html)"
+shell = "{% if os() == 'windows' %}pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command{% else %}bash -c -o errexit{% endif %}"
+run = '''
+ref="$(mise where zig)/doc/langref.html"
+if command -v xdg-open >/dev/null 2>&1; then xdg-open "$ref"; else open "$ref"; fi
+'''
+run_windows = "Invoke-Item (Join-Path (mise where zig) doc langref.html)"
