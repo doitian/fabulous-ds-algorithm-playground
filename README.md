@@ -1,0 +1,46 @@
+# Fabulous DS & Algorithm Playground
+
+Zig exercises for *Fabulous Adventures in Data Structures and Algorithms* (Eric Lippert).
+Each exercise has a skeleton with `@panic("TODO")` bodies and a test file. You fill in the skeleton until the tests pass.
+
+## Setup
+
+Zig is pinned in `mise.toml` (0.17.0):
+
+```bash
+mise install
+```
+
+## Workflow
+
+```bash
+mise exec -- zig build test
+```
+
+A test that hits a `TODO` panic is reported as a crash, and the runner moves on to the next test. To run a subset, filter by test name (repeatable):
+
+```bash
+mise exec -- zig build test -Dtest-filter=ImStack
+```
+
+## Layout
+
+```
+src/
+  root.zig                 module root; pulls every test file in
+  chNN/<name>.zig          skeleton — your implementation goes here
+  chNN/<name>_test.zig     tests — read them as the spec
+```
+
+## Conventions
+
+- **Errors instead of exceptions.** If the book throws `InvalidOperationException`, the Zig version returns an error, e.g. `error.EmptyStack`.
+- **Allocators are passed in.** Operations that create nodes take an `std.mem.Allocator`. Persistent structures share nodes between versions, so nodes aren't freed one at a time. The caller owns their lifetime, and the tests use an `ArenaAllocator`.
+- **`IEnumerable<T>` becomes an iterator.** `iterator()` returns a struct whose `next() ?T` yields items.
+- **You choose the representation.** The skeletons fix only the public API. Add whatever fields you like, and keep `empty` consistent with them.
+
+## Progress
+
+| Chapter | Exercise | Skeleton | Status |
+| --- | --- | --- | --- |
+| 2.2 | Immutable stack | `src/ch02/im_stack.zig` | ⬜ |

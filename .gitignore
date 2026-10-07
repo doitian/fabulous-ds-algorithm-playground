@@ -1,1 +1,3 @@
 *.epub
+.zig-cache/
+zig-out/

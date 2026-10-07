@@ -1,0 +1,12 @@
+.{
+    .name = .fabulous_ds_algorithm_playground,
+    .version = "0.0.0",
+    .fingerprint = 0xd9ead7d165d86fb8,
+    .minimum_zig_version = "0.17.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
