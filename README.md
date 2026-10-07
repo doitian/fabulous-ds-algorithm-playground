@@ -23,6 +23,12 @@ A test that hits a `TODO` panic is reported as a crash, and the runner moves on 
 mise exec -- zig build test -Dtest-filter=ImStack
 ```
 
+To open the language reference bundled with the pinned Zig version (works offline):
+
+```bash
+mise run langref
+```
+
 ## Layout
 
 ```

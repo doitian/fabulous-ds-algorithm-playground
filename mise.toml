@@ -1,2 +1,7 @@
 [tools]
 zig = "0.17.0"
+
+[tasks.langref]
+description = "Open the bundled Zig language reference for the pinned version"
+shell = "pwsh -NoProfile -Command"
+run = "Invoke-Item (Join-Path (mise where zig) doc langref.html)"
