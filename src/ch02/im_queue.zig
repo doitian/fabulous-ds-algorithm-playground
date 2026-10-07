@@ -17,53 +17,55 @@ pub const Error = error{EmptyQueue};
 pub fn ImQueue(comptime T: type) type {
     return struct {
         const Self = @This();
+        const Stack = ImStack(T);
 
-        // TODO: add the fields of your representation, then make `empty` match.
+        enqueues: Stack,
+        /// dequeues is never empty in an non-empty ImQueue
+        dequeues: Stack,
 
         /// The single empty queue. Every queue is built by enqueueing onto this.
-        pub const empty: Self = .{};
+        pub const empty: Self = .{ .enqueues = .empty, .dequeues = .empty };
 
         /// O(1) time and memory, regardless of the size of `self`.
         pub fn enqueue(self: Self, allocator: Allocator, item: T) Allocator.Error!Self {
-            _ = self;
-            _ = allocator;
-            _ = item;
-            @panic("TODO: ImQueue.enqueue");
+            return if (self.isEmpty())
+                .{ .enqueues = self.enqueues, .dequeues = try self.dequeues.push(allocator, item) }
+            else
+                .{ .enqueues = try self.enqueues.push(allocator, item), .dequeues = self.dequeues };
         }
 
         /// The front (least recently enqueued) item.
         /// Fails with `error.EmptyQueue` on the empty queue.
         pub fn peek(self: Self) Error!T {
-            _ = self;
-            @panic("TODO: ImQueue.peek");
+            return self.dequeues.peek() catch error.EmptyQueue;
         }
 
         /// Everything after the front item. Fails with `error.EmptyQueue` on
         /// the empty queue. Amortized O(1); an occasional call is O(n).
         pub fn dequeue(self: Self, allocator: Allocator) (Error || Allocator.Error)!Self {
-            _ = self;
-            _ = allocator;
-            @panic("TODO: ImQueue.dequeue");
+            const tail = self.dequeues.pop() catch return error.EmptyQueue;
+            return if (!tail.isEmpty())
+                .{ .enqueues = self.enqueues, .dequeues = tail }
+            else
+                .{ .enqueues = .empty, .dequeues = try self.enqueues.reverse(allocator) };
         }
 
         pub fn isEmpty(self: Self) bool {
-            _ = self;
-            @panic("TODO: ImQueue.isEmpty");
+            return self.dequeues.isEmpty();
         }
 
         /// Yields items from front to back. O(n) time; may allocate O(n) memory.
         pub fn iterator(self: Self, allocator: Allocator) Allocator.Error!Iterator {
-            _ = self;
-            _ = allocator;
-            @panic("TODO: ImQueue.iterator");
+            const back = (try self.enqueues.reverse(allocator)).iterator();
+            return .{ .front = self.dequeues.iterator(), .back = back };
         }
 
         pub const Iterator = struct {
-            // TODO: add the fields your iterator needs.
+            front: Stack.Iterator,
+            back: Stack.Iterator,
 
             pub fn next(it: *Iterator) ?T {
-                _ = it;
-                @panic("TODO: ImQueue.Iterator.next");
+                return it.front.next() orelse it.back.next();
             }
         };
     };
