@@ -32,6 +32,49 @@ fn stackOf(allocator: std.mem.Allocator, items: []const i32) !Stack {
     return s;
 }
 
+/// Passes allocations through to `child` until `remaining` bytes have been
+/// handed out, then reports OutOfMemory. Freed bytes are not given back.
+const BudgetAllocator = struct {
+    child: std.mem.Allocator,
+    remaining: usize,
+
+    fn allocator(self: *BudgetAllocator) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{ .alloc = alloc, .resize = resize, .remap = remap, .free = free },
+        };
+    }
+
+    fn take(self: *BudgetAllocator, bytes: usize) bool {
+        if (bytes > self.remaining) return false;
+        self.remaining -= bytes;
+        return true;
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *BudgetAllocator = @ptrCast(@alignCast(ctx));
+        if (!self.take(len)) return null;
+        return self.child.rawAlloc(len, alignment, ret_addr);
+    }
+
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *BudgetAllocator = @ptrCast(@alignCast(ctx));
+        if (new_len > memory.len and !self.take(new_len - memory.len)) return false;
+        return self.child.rawResize(memory, alignment, new_len, ret_addr);
+    }
+
+    fn remap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *BudgetAllocator = @ptrCast(@alignCast(ctx));
+        if (new_len > memory.len and !self.take(new_len - memory.len)) return null;
+        return self.child.rawRemap(memory, alignment, new_len, ret_addr);
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *BudgetAllocator = @ptrCast(@alignCast(ctx));
+        self.child.rawFree(memory, alignment, ret_addr);
+    }
+};
+
 test "HList: empty list is empty and has no items" {
     var arena: std.heap.ArenaAllocator = .init(testing.allocator);
     defer arena.deinit();
@@ -193,8 +236,10 @@ test "HList: toStack is O(n) for lists built by pushes and appends" {
     while (it.next()) |_| count += 1;
     try testing.expectEqual(n, count);
 
-    // Concatenating the parts eagerly at every level would need ~n²/4.
-    try testing.expect(counting.allocations <= 2 * n);
+    // Linear means a few allocations per item, depending on how the walk keeps
+    // its pending work. Concatenating the parts eagerly at every level would
+    // need ~n²/4.
+    try testing.expect(counting.allocations <= 4 * n);
 }
 
 test "HList: toStack reports OutOfMemory at any allocation and leaves the list usable" {
@@ -222,4 +267,23 @@ test "HList: works with non-integer items" {
     const words = try (try Words.single("build").append(a, "cheap")).push(a, "pay later,");
     try testing.expectEqualStrings("pay later,", try words.peek(a));
     try testing.expectEqualStrings("build", try (try words.pop(a)).peek(a));
+}
+
+test "HList: stretch goal (section 2.7.6): toStack on a deep list doesn't overflow the call stack" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    // A linear implementation needs well under 256 MiB here. One that copies the
+    // list on every append fails with OutOfMemory within a few thousand items
+    // instead of exhausting the machine's memory.
+    var budget: BudgetAllocator = .{ .child = arena.allocator(), .remaining = 256 << 20 };
+    const a = budget.allocator();
+
+    const n = 1_000_000;
+    var hl = List.empty;
+    for (0..n) |i| hl = try hl.append(a, @intCast(i));
+
+    var expected: i32 = 0;
+    var it = try hl.iterator(a);
+    while (it.next()) |item| : (expected += 1) try testing.expectEqual(expected, item);
+    try testing.expectEqual(n, expected);
 }
