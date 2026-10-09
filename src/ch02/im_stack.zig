@@ -56,12 +56,32 @@ pub fn ImStack(comptime T: type) type {
         /// 2.4, listing 2.7: the same items in the opposite order.
         /// O(n) time and memory, without recursion; `self` is unchanged.
         pub fn reverse(self: Self, allocator: Allocator) Allocator.Error!Self {
-            var reversed = empty;
+            return self.reverseOnto(allocator, .empty);
+        }
+
+        /// 2.7.1, listing 2.13: `self` reversed, on top of `tail`.
+        /// O(n) in the size of `self`; `tail` is shared, not copied.
+        pub fn reverseOnto(self: Self, allocator: Allocator, tail: Self) Allocator.Error!Self {
             var it = self.iterator();
+            var result = tail;
             while (it.next()) |item| {
-                reversed = try reversed.push(allocator, item);
+                result = try result.push(allocator, item);
             }
-            return reversed;
+            return result;
+        }
+
+        /// 2.7.1, listing 2.13: `self`'s items followed by `other`'s.
+        /// O(n) in the size of `self`; `other` is shared, not copied.
+        pub fn concatenate(self: Self, allocator: Allocator, other: Self) Allocator.Error!Self {
+            if (other.isEmpty()) return self;
+            const front = try self.reverse(allocator);
+            return front.reverseOnto(allocator, other);
+        }
+
+        /// 2.7.1, listing 2.13: `self` with `item` added at the bottom. O(n).
+        pub fn append(self: Self, allocator: Allocator, item: T) Allocator.Error!Self {
+            const single = try empty.push(allocator, item);
+            return self.concatenate(allocator, single);
         }
 
         /// Yields items from top to bottom without recursion or allocation.

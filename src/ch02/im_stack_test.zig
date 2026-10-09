@@ -235,3 +235,92 @@ test "ImStack.reverse: deep stacks reverse without recursion" {
     while (it.next()) |item| : (expected += 1) try testing.expectEqual(expected, item);
     try testing.expectEqual(n, expected);
 }
+
+test "ImStack.reverseOnto: puts the reversed stack on top of the tail" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try pushAll(a, &.{ 1, 2, 3 });
+    const tail = try pushAll(a, &.{ 8, 9 });
+    try expectItems(i32, try s.reverseOnto(a, tail), &.{ 1, 2, 3, 9, 8 });
+    try expectItems(i32, try s.reverseOnto(a, .empty), &.{ 1, 2, 3 });
+    try expectItems(i32, s, &.{ 3, 2, 1 });
+    try expectItems(i32, tail, &.{ 9, 8 });
+
+    var failing: testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = 0 });
+    try expectItems(i32, try Stack.empty.reverseOnto(failing.allocator(), tail), &.{ 9, 8 });
+}
+
+test "ImStack.concatenate: joins two stacks in order" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const xs = try pushAll(a, &.{ 1, 2, 3 });
+    const ys = try pushAll(a, &.{ 8, 9 });
+    try expectItems(i32, try xs.concatenate(a, ys), &.{ 3, 2, 1, 9, 8 });
+    try expectItems(i32, try ys.concatenate(a, xs), &.{ 9, 8, 3, 2, 1 });
+    try expectItems(i32, try Stack.empty.concatenate(a, ys), &.{ 9, 8 });
+    try expectItems(i32, xs, &.{ 3, 2, 1 });
+    try expectItems(i32, ys, &.{ 9, 8 });
+}
+
+test "ImStack.concatenate: an empty right-hand stack returns the left one without allocating" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const xs = try pushAll(arena.allocator(), &.{ 1, 2, 3 });
+    var failing: testing.FailingAllocator = .init(arena.allocator(), .{ .fail_index = 0 });
+    try expectItems(i32, try xs.concatenate(failing.allocator(), .empty), &.{ 3, 2, 1 });
+}
+
+test "ImStack.concatenate: cost does not depend on the right-hand stack" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const xs = try pushAll(arena.allocator(), &.{ 1, 2, 3 });
+    const small = try pushAll(arena.allocator(), &.{0});
+    var big = Stack.empty;
+    for (0..1000) |i| big = try big.push(arena.allocator(), @intCast(i));
+
+    var onto_small: testing.FailingAllocator = .init(arena.allocator(), .{});
+    _ = try xs.concatenate(onto_small.allocator(), small);
+
+    var onto_big: testing.FailingAllocator = .init(arena.allocator(), .{});
+    _ = try xs.concatenate(onto_big.allocator(), big);
+
+    try testing.expectEqual(onto_small.allocations, onto_big.allocations);
+    try testing.expectEqual(onto_small.allocated_bytes, onto_big.allocated_bytes);
+}
+
+test "ImStack.concatenate: reports OutOfMemory at any allocation and leaves both stacks usable" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const xs = try pushAll(arena.allocator(), &.{ 1, 2, 3 });
+    const ys = try pushAll(arena.allocator(), &.{ 8, 9 });
+    var fail_index: usize = 0;
+    while (fail_index < 100) : (fail_index += 1) {
+        var failing: testing.FailingAllocator = .init(arena.allocator(), .{ .fail_index = fail_index });
+        const result = xs.concatenate(failing.allocator(), ys);
+        try expectItems(i32, xs, &.{ 3, 2, 1 });
+        try expectItems(i32, ys, &.{ 9, 8 });
+        if (result) |joined| {
+            try expectItems(i32, joined, &.{ 3, 2, 1, 9, 8 });
+            break;
+        } else |err| try testing.expectEqual(error.OutOfMemory, err);
+    } else return error.TestUnexpectedResult;
+    try testing.expect(fail_index > 0);
+}
+
+test "ImStack.append: adds an item at the bottom" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try pushAll(a, &.{ 1, 2, 3 });
+    try expectItems(i32, try s.append(a, 0), &.{ 3, 2, 1, 0 });
+    try expectItems(i32, try Stack.empty.append(a, 5), &.{5});
+    try expectItems(i32, s, &.{ 3, 2, 1 });
+}
