@@ -324,3 +324,20 @@ test "ImStack.append: adds an item at the bottom" {
     try expectItems(i32, try Stack.empty.append(a, 5), &.{5});
     try expectItems(i32, s, &.{ 3, 2, 1 });
 }
+
+test "ImStack.single: a one-item stack" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const s = try Stack.single(a, 7);
+    try testing.expect(!s.isEmpty());
+    try testing.expectEqual(7, try s.peek());
+    try testing.expect((try s.pop()).isEmpty());
+    try expectItems(i32, s, &.{7});
+}
+
+test "ImStack.single: reports OutOfMemory" {
+    var failing: testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = 0 });
+    try testing.expectError(error.OutOfMemory, Stack.single(failing.allocator(), 7));
+}

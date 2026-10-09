@@ -30,6 +30,10 @@ pub fn ImStack(comptime T: type) type {
             tail: Self,
         };
 
+        pub fn single(allocator: Allocator, item: T) Allocator.Error!Self {
+            return empty.push(allocator, item);
+        }
+
         /// O(1) time and memory, regardless of the size of `self`.
         pub fn push(self: Self, allocator: Allocator, item: T) Allocator.Error!Self {
             const node = try allocator.create(Node);
@@ -80,8 +84,8 @@ pub fn ImStack(comptime T: type) type {
 
         /// 2.7.1, listing 2.13: `self` with `item` added at the bottom. O(n).
         pub fn append(self: Self, allocator: Allocator, item: T) Allocator.Error!Self {
-            const single = try empty.push(allocator, item);
-            return self.concatenate(allocator, single);
+            const tail = try empty.push(allocator, item);
+            return self.concatenate(allocator, tail);
         }
 
         /// Yields items from top to bottom without recursion or allocation.
