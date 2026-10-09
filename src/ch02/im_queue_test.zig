@@ -254,3 +254,177 @@ test "ImQueue: works with non-integer items" {
     try testing.expectEqualStrings("queue", try (try words.dequeue(a)).peek());
     try expectItems([]const u8, try words.dequeue(a), &.{ "queue", "gesundheit" });
 }
+
+/// Queues whose items sit in different internal states: freshly enqueued,
+/// partly dequeued, and dequeued down to their last enqueued items.
+fn sampleQueues(allocator: std.mem.Allocator) ![3]Queue {
+    return .{
+        try enqueueAll(allocator, &.{ 1, 2, 3 }),
+        try (try enqueueAll(allocator, &.{ 0, 1, 2, 3 })).dequeue(allocator),
+        try (try (try enqueueAll(allocator, &.{ -1, 0, 1, 2, 3 })).dequeue(allocator)).dequeue(allocator),
+    };
+}
+
+test "ImQueue.concatenate: joins two queues in order" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const lefts = try sampleQueues(a);
+    const right = try (try (try enqueueAll(a, &.{ 3, 4, 5, 6 })).dequeue(a)).enqueue(a, 7);
+    for (lefts) |left| {
+        try expectItems(i32, left, &.{ 1, 2, 3 });
+        try expectItems(i32, try left.concatenate(a, right), &.{ 1, 2, 3, 4, 5, 6, 7 });
+        try expectItems(i32, try right.concatenate(a, left), &.{ 4, 5, 6, 7, 1, 2, 3 });
+        try expectItems(i32, try left.concatenate(a, left), &.{ 1, 2, 3, 1, 2, 3 });
+    }
+}
+
+test "ImQueue.concatenate: the empty queue on either side changes nothing and allocates nothing" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+
+    const q = try enqueueAll(arena.allocator(), &.{ 1, 2, 3 });
+    var failing: testing.FailingAllocator = .init(arena.allocator(), .{ .fail_index = 0 });
+    try expectItems(i32, try q.concatenate(failing.allocator(), .empty), &.{ 1, 2, 3 });
+    try expectItems(i32, try Queue.empty.concatenate(failing.allocator(), q), &.{ 1, 2, 3 });
+    try testing.expect((try Queue.empty.concatenate(failing.allocator(), .empty)).isEmpty());
+}
+
+test "ImQueue.concatenate: leaves both queues unchanged" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const left = try enqueueAll(a, &.{ 1, 2 });
+    const right = try (try enqueueAll(a, &.{ 2, 3, 4 })).dequeue(a);
+    _ = try left.concatenate(a, right);
+    _ = try right.concatenate(a, left);
+    try expectItems(i32, left, &.{ 1, 2 });
+    try expectItems(i32, right, &.{ 3, 4 });
+}
+
+test "ImQueue.concatenate: the result keeps working as a queue" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var q = try (try enqueueAll(a, &.{ 1, 2 })).concatenate(a, try enqueueAll(a, &.{ 3, 4 }));
+    q = try q.enqueue(a, 5);
+    for (1..6) |expected| {
+        try testing.expectEqual(@as(i32, @intCast(expected)), try q.peek());
+        q = try q.dequeue(a);
+    }
+    try testing.expect(q.isEmpty());
+}
+
+test "ImQueue.concatenate: matches a simple model over random operations" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    var prng: std.Random.DefaultPrng = .init(0x2_4_c);
+    const random = prng.random();
+
+    var model: std.ArrayList(i32) = .empty;
+    var next_item: i32 = 0;
+    var q = Queue.empty;
+
+    for (0..5_000) |step| {
+        switch (random.uintLessThan(u8, 4)) {
+            0 => {
+                q = try q.enqueue(a, next_item);
+                try model.append(a, next_item);
+                next_item += 1;
+            },
+            1 => if (model.items.len > 0) {
+                q = try q.dequeue(a);
+                _ = model.orderedRemove(0);
+            },
+            else => |op| {
+                const len = random.uintLessThan(usize, 5);
+                var part = Queue.empty;
+                var items: std.ArrayList(i32) = .empty;
+                for (0..len) |_| {
+                    part = try part.enqueue(a, next_item);
+                    try items.append(a, next_item);
+                    next_item += 1;
+                }
+                if (op == 2) {
+                    q = try q.concatenate(a, part);
+                    try model.appendSlice(a, items.items);
+                } else {
+                    q = try part.concatenate(a, q);
+                    try model.insertSlice(a, 0, items.items);
+                }
+            },
+        }
+
+        try testing.expectEqual(model.items.len == 0, q.isEmpty());
+        if (model.items.len > 0) try testing.expectEqual(model.items[0], try q.peek());
+        if (step % 250 == 0) try expectItems(i32, q, model.items);
+    }
+    try expectItems(i32, q, model.items);
+}
+
+test "ImQueue.concatenate: reports OutOfMemory at any allocation and leaves both queues usable" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const left = try enqueueAll(a, &.{ 1, 2 });
+    const right = try (try enqueueAll(a, &.{ 2, 3, 4, 5 })).dequeue(a);
+    var fail_index: usize = 0;
+    while (fail_index < 100) : (fail_index += 1) {
+        var failing: testing.FailingAllocator = .init(a, .{ .fail_index = fail_index });
+        const result = left.concatenate(failing.allocator(), right);
+        try expectItems(i32, left, &.{ 1, 2 });
+        try expectItems(i32, right, &.{ 3, 4, 5 });
+        if (result) |joined| {
+            try expectItems(i32, joined, &.{ 1, 2, 3, 4, 5 });
+            break;
+        } else |err| try testing.expectEqual(error.OutOfMemory, err);
+    } else return error.TestUnexpectedResult;
+}
+
+test "ImQueue.concatenate: long queues join without recursion" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const n = 100_000;
+    var left = Queue.empty;
+    var right = Queue.empty;
+    for (0..n) |i| {
+        left = try left.enqueue(a, @intCast(i));
+        right = try right.enqueue(a, @intCast(n + i));
+    }
+    right = try (try right.enqueue(a, 2 * n)).dequeue(a);
+
+    var q = try left.concatenate(a, right);
+    var expected: i32 = 0;
+    while (!q.isEmpty()) : (expected += 1) {
+        if (expected == n) expected += 1;
+        try testing.expectEqual(expected, try q.peek());
+        q = try q.dequeue(a);
+    }
+    try testing.expectEqual(2 * n + 1, expected);
+}
+
+test "ImQueue.single: a one-item queue" {
+    var arena: std.heap.ArenaAllocator = .init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+
+    const q = try Queue.single(a, 7);
+    try testing.expect(!q.isEmpty());
+    try testing.expectEqual(7, try q.peek());
+    try testing.expect((try q.dequeue(a)).isEmpty());
+    try expectItems(i32, q, &.{7});
+    try expectItems(i32, try (try q.enqueue(a, 8)).enqueue(a, 9), &.{ 7, 8, 9 });
+}
+
+test "ImQueue.single: reports OutOfMemory" {
+    var failing: testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = 0 });
+    try testing.expectError(error.OutOfMemory, Queue.single(failing.allocator(), 7));
+}

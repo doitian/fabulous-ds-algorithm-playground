@@ -26,6 +26,10 @@ pub fn ImQueue(comptime T: type) type {
         /// The single empty queue. Every queue is built by enqueueing onto this.
         pub const empty: Self = .{ .enqueues = .empty, .dequeues = .empty };
 
+        pub fn single(allocator: Allocator, item: T) Allocator.Error!Self {
+            return empty.enqueue(allocator, item);
+        }
+
         /// O(1) time and memory, regardless of the size of `self`.
         pub fn enqueue(self: Self, allocator: Allocator, item: T) Allocator.Error!Self {
             return if (self.isEmpty())
@@ -52,6 +56,14 @@ pub fn ImQueue(comptime T: type) type {
 
         pub fn isEmpty(self: Self) bool {
             return self.dequeues.isEmpty();
+        }
+
+        pub fn concatenate(self: Self, allocator: Allocator, other: Self) Allocator.Error!Self {
+            if (self.isEmpty()) return other;
+
+            var enqueues = try other.dequeues.reverseOnto(allocator, self.enqueues);
+            enqueues = try other.enqueues.concatenate(allocator, enqueues);
+            return .{ .enqueues = enqueues, .dequeues = self.dequeues };
         }
 
         /// Yields items from front to back. O(n) time; may allocate O(n) memory.
