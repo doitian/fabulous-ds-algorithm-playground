@@ -54,6 +54,17 @@ src/
 | 2.4 | Immutable queue | `src/ch02/im_queue.zig` | ✅ |
 | 2.7 | Stack `reverseOnto`, `concatenate`, `append` (listing 2.13) | `src/ch02/im_stack.zig` | ✅ |
 | 2.7 | Hughes list | `src/ch02/hughes_list.zig` | ✅ |
+| 3.3.1 | Mini-deque (listing 3.4) | `src/ch03/mini_deque.zig` | ✅ |
+| 3.3–3.5 | Immutable finger-tree deque (listing 3.5) | `src/ch03/im_deque.zig` | ✅ |
+| 3.7 | Deque concatenation (stretch goal) | `src/ch03/im_deque.zig` | ✅ |
+
+## Chapter 3 exercise
+
+1. Implement `MiniDeque(T)`: immutable buffers of one to four items. Run `mise exec -- zig build test -Dtest-filter=MiniDeque`.
+2. Implement `ImDeque(T)` through iteration. Use nonempty end buffers and a recursive middle containing three-item chunks. Run `mise exec -- zig build test -Dtest-filter="ImDeque:"`.
+3. Implement the concatenation stretch goal from section 3.7, allowing two- and three-item middle chunks. Run `mise exec -- zig build test -Dtest-filter="ImDeque concatenate:"`.
+
+The deque uses runtime recursive nodes to express the middle's increasing depth. Iteration takes O(n) total time and O(log n) scratch space, allocated when the iterator is created. Concatenation joins only the boundary digits and recursive middles, preserving shared interior subtrees. Allocation tests check persistence-friendly space growth without requiring a particular node layout; they do not prove the time bounds.
 
 ## License
 
